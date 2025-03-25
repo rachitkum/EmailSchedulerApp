@@ -1,13 +1,9 @@
+// src/App.js
 import React, { useState, useEffect } from 'react';
-import {
-  View,
-  Text,
-  TextInput,
-  Button,
-  ActivityIndicator,
-  StyleSheet,
-  ScrollView,
-} from 'react-native';
+import { View, StyleSheet } from 'react-native';
+import LoginScreen from './src/screens/LoginScreen';
+import DashboardScreen from './src/screens/DashboardScreen';
+import Header from './src/components/Header';
 import axios from 'axios';
 
 // API base URL from Railway
@@ -39,23 +35,26 @@ export default function App() {
       window.location.href = response.data.auth_url;
     } catch (error) {
       console.error('Login error:', error);
+      alert('Error during login. Please try again.');
     }
   };
 
-  // Simulate handling Google OAuth callback (manual for now)
+  // Capture token and email after login & force redirect
   useEffect(() => {
     const urlParams = new URLSearchParams(window.location.search);
-    const success = urlParams.get('success');
-    if (success === 'true') {
-      const email = urlParams.get('email');
-      const token = urlParams.get('token');
-      if (email && token) {
-        localStorage.setItem('user_email', email);
-        localStorage.setItem('access_token', token);
-        setUserEmail(email);
-        setAccessToken(token);
-        setIsLoggedIn(true);
-      }
+    const token = urlParams.get('token');
+    const email = urlParams.get('email');
+
+    if (token && email) {
+      localStorage.setItem('user_email', email);
+      localStorage.setItem('access_token', token);
+      setUserEmail(email);
+      setAccessToken(token);
+      setIsLoggedIn(true);
+
+      // Remove token from URL and reload to update state
+      window.history.replaceState(null, '', window.location.pathname);
+      window.location.reload();
     }
   }, []);
 
@@ -70,19 +69,20 @@ export default function App() {
     try {
       const response = await axios.post(`${API_BASE_URL}/upload-csv/`, formData);
       setCsvData(response.data.rows);
-      alert('CSV uploaded successfully');
+      alert('✅ CSV uploaded successfully!');
     } catch (error) {
       console.error('CSV Upload Error:', error);
+      alert('❌ Error uploading CSV. Try again.');
     }
   };
 
   // Send bulk emails
   const handleSendEmails = async () => {
     if (!prompt || csvData.length === 0) {
-      alert('Please upload CSV and enter the email content');
+      alert('❗ Please upload a CSV and enter the email content');
       return;
     }
-  
+
     setLoading(true);
     try {
       const response = await axios.post(
@@ -93,20 +93,19 @@ export default function App() {
         },
         {
           headers: {
-            Authorization: `Bearer ${accessToken}`, // ✅ Pass token in header
+            Authorization: `Bearer ${accessToken}`, // ✅ Send token in header
           },
         }
       );
-  
-      alert(response.data.message);
+
+      alert(response.data.message || '✅ Emails sent successfully!');
     } catch (error) {
       console.error('Error sending emails:', error);
-      alert('Error sending emails. Check logs.');
+      alert('❌ Error sending emails. Check logs.');
     } finally {
       setLoading(false);
     }
   };
-  
 
   // Logout user
   const handleLogout = async () => {
@@ -117,98 +116,45 @@ export default function App() {
       setIsLoggedIn(false);
       setUserEmail('');
       setAccessToken('');
-      alert('Logged out successfully');
+      alert('✅ Logged out successfully');
+      window.location.reload(); // Ensure full logout
     } catch (error) {
       console.error('Logout error:', error);
+      alert('❌ Error during logout.');
     }
   };
 
   return (
-    <ScrollView contentContainerStyle={styles.container}>
-      {isLoggedIn ? (
-        <>
-          <Text style={styles.heading}>Welcome, {userEmail}!</Text>
+    <View style={styles.container}>
+      {/* Show Header with Gmail/Profile Icon */}
+      <Header
+        isLoggedIn={isLoggedIn}
+        handleGoogleLogin={handleGoogleLogin}
+        handleLogout={handleLogout}
+        userEmail={userEmail}
+      />
 
-          <TextInput
-            style={styles.input}
-            placeholder="Enter Email Content with {name}, {email} placeholders"
-            value={prompt}
-            onChangeText={setPrompt}
-          />
-          <input
-            type="file"
-            accept=".csv"
-            onChange={handleCsvUpload}
-            style={styles.fileInput}
-          />
-          <Button title="Send Bulk Emails" onPress={handleSendEmails} />
-          {loading && <ActivityIndicator size="large" color="#007bff" />}
-          <View style={styles.csvPreview}>
-            {csvData.length > 0 && (
-              <>
-                <Text style={styles.previewHeading}>CSV Preview:</Text>
-                {csvData.slice(0, 5).map((row, index) => (
-                  <Text key={index} style={styles.previewText}>
-                    {JSON.stringify(row)}
-                  </Text>
-                ))}
-              </>
-            )}
-          </View>
-          <Button title="Logout" onPress={handleLogout} color="red" />
-        </>
+      {/* Show Dashboard or Login Screen */}
+      {isLoggedIn ? (
+        <DashboardScreen
+          userEmail={userEmail}
+          prompt={prompt}
+          setPrompt={setPrompt}
+          csvData={csvData}
+          handleCsvUpload={handleCsvUpload}
+          handleSendEmails={handleSendEmails}
+          loading={loading}
+          handleLogout={handleLogout}
+        />
       ) : (
-        <>
-          <Text style={styles.heading}>Connect Your Google Account</Text>
-          <Button title="Login with Google" onPress={handleGoogleLogin} />
-        </>
+        <LoginScreen handleGoogleLogin={handleGoogleLogin} />
       )}
-    </ScrollView>
+    </View>
   );
 }
 
-// Basic styles
 const styles = StyleSheet.create({
   container: {
-    flexGrow: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    paddingHorizontal: 20,
-    backgroundColor: '#f5f5f5',
-  },
-  heading: {
-    fontSize: 24,
-    marginBottom: 20,
-    fontWeight: 'bold',
-  },
-  input: {
-    width: '100%',
-    height: 40,
-    borderColor: '#ccc',
-    borderWidth: 1,
-    marginBottom: 10,
-    paddingHorizontal: 10,
-    borderRadius: 5,
-    backgroundColor: '#fff',
-  },
-  fileInput: {
-    marginBottom: 10,
-  },
-  csvPreview: {
-    marginTop: 20,
-    backgroundColor: '#fff',
-    padding: 10,
-    borderRadius: 5,
-    width: '100%',
-    maxHeight: 200,
-    overflow: 'scroll',
-  },
-  previewHeading: {
-    fontSize: 18,
-    marginBottom: 5,
-  },
-  previewText: {
-    fontSize: 12,
-    marginBottom: 5,
+    flex: 1,
   },
 });
